@@ -1,0 +1,43 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        ECR_REPOSITORY_URI = '471112595535.dkr.ecr.us-east-1.amazonaws.com/version-service'
+        IMAGE_TAG = "3.0.1-${env.BUILD_ID}"
+        CLUSTER_NAME = "high-availability-cluster"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/your-repo/eks-infra.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${env.ECR_REPOSITORY_URI}:${env.IMAGE_TAG}")
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials') {
+                        sh '$(aws ecr get-login --no-include-email --region us-east-1)'
+                        docker.image("${env.ECR_REPOSITORY_URI}:${env.IMAGE_TAG}").push()
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials') {
+                        sh """
+                        eksctl create cluster --name ${env.CLUSTER_NAME} --region ${env.AWS_DEFAULT_REGION} --zones us-east-1a,us-east-1b
+                        kubectl
